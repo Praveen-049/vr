@@ -3,173 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>WebXR AMR Controller V3 - Neural Link</title>
-    
-    <!-- MediaPipe Tasks Vision ESM -->
-    <script type="module">
-        import {
-            GestureRecognizer,
-            FilesetResolver,
-            DrawingUtils
-        } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
-
-        // UI Globals
-        const splash = document.getElementById('splash');
-        const statusText = document.getElementById('init-status');
-        const btnStart = document.getElementById('btn-start');
-
-        let gestureRecognizer;
-        let runningMode = "IMAGE";
-        let webcamRunning = false;
-        let videoElement = document.getElementById('input_video');
-        let lastVideoTime = -1;
-
-        // HUD Pointers
-        const ui = {
-            cmd: [document.getElementById('cmd-L'), document.getElementById('cmd-R')],
-            cool: [document.getElementById('cool-L'), document.getElementById('cool-R')],
-            dots: [document.getElementById('dot-L'), document.getElementById('dot-R')],
-            x: [document.getElementById('x-L'), document.getElementById('x-R')],
-            y: [document.getElementById('y-L'), document.getElementById('y-R')],
-            z: [document.getElementById('z-L'), document.getElementById('z-R')],
-            pinch: [document.getElementById('pinch-L'), document.getElementById('pinch-R')],
-            flashes: [document.getElementById('flash-L'), document.getElementById('flash-R')]
-        };
-
-        let lastDispCommand = 'NONE';
-        let commandCooldown = false;
-        const COOLDOWN_MS = 1000;
-
-        // Initialize Recognizer
-        async function createGestureRecognizer() {
-            statusText.textContent = "Loading AI Core...";
-            const vision = await FilesetResolver.forVisionTasks(
-                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-            );
-            gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
-                    delegate: "GPU"
-                },
-                runningMode: "VIDEO",
-                numHands: 2
-            });
-            statusText.textContent = "Neural Link Ready";
-            btnStart.classList.remove('hidden');
-        }
-
-        async function initApp() {
-            splash.classList.add('fade-out');
-            setTimeout(() => splash.style.display = 'none', 500);
-
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: 640, height: 480 }
-                });
-                
-                videoElement.srcObject = stream;
-                document.getElementById('video-L').srcObject = stream;
-                document.getElementById('video-R').srcObject = stream;
-                
-                await videoElement.play();
-                requestAnimationFrame(predictLoop);
-
-                if (document.documentElement.requestFullscreen) {
-                    document.documentElement.requestFullscreen();
-                }
-            } catch (err) {
-                alert("Camera Access Denied: " + err.message);
-            }
-        }
-
-        function dispatchCommand(cmd) {
-            if (commandCooldown || cmd === 'NONE') return;
-
-            commandCooldown = true;
-            ui.cool.forEach(c => {
-                c.style.transition = 'none';
-                c.style.width = '100%';
-                setTimeout(() => {
-                    c.style.transition = `width ${COOLDOWN_MS}ms linear`;
-                    c.style.width = '0%';
-                }, 10);
-            });
-
-            setTimeout(() => { commandCooldown = false; }, COOLDOWN_MS);
-
-            ui.cmd.forEach(c => {
-                c.textContent = cmd;
-                c.classList.add('active');
-            });
-            
-            ui.flashes.forEach(f => f.style.display = cmd === 'STOP' ? 'block' : 'none');
-            
-            window.parent.postMessage({ type: 'AMR_CMD', command: cmd }, '*');
-            setTimeout(() => ui.cmd.forEach(c => c.classList.remove('active')), 700);
-        }
-
-        async function predictLoop() {
-            if (videoElement.currentTime !== lastVideoTime) {
-                lastVideoTime = videoElement.currentTime;
-                const results = await gestureRecognizer.recognizeForVideo(videoElement, performance.now());
-
-                const hasHands = results.landmarks && results.landmarks.length > 0;
-                ui.dots.forEach(d => d.classList.toggle('active', hasHands));
-
-                if (hasHands) {
-                    const landmarks = results.landmarks[0];
-                    const gesture = results.gestures && results.gestures[0] && results.gestures[0][0] ? results.gestures[0][0].categoryName : "None";
-                    
-                    // Coordinates & Depth
-                    const x = landmarks[8].x;
-                    const y = landmarks[8].y;
-                    const z = landmarks[8].z; // Depth estimation
-
-                    ui.x.forEach(v => v.textContent = x.toFixed(2));
-                    ui.y.forEach(v => v.textContent = y.toFixed(2));
-                    ui.z.forEach(v => v.textContent = (z * -100).toFixed(1));
-
-                    // Pinch Detection (Landmark 4 vs 8)
-                    const dist4_8 = Math.sqrt(
-                        Math.pow(landmarks[4].x - landmarks[8].x, 2) +
-                        Math.pow(landmarks[4].y - landmarks[8].y, 2)
-                    );
-                    const isPinching = dist4_8 < 0.05;
-                    ui.pinch.forEach(p => p.classList.toggle('active', isPinching));
-
-                    let cmd = 'NONE';
-
-                    // Mapping Logic
-                    if (gesture === 'Open_Palm') cmd = 'STOP';
-                    else if (gesture === 'Closed_Fist') cmd = 'PICK';
-                    else if (gesture === 'Victory') cmd = 'RETURN';
-                    else if (isPinching) cmd = 'DROP';
-                    else if (gesture === 'Pointing_Up') {
-                        if (y < 0.25) cmd = 'UP';
-                        else if (y > 0.75) cmd = 'DOWN';
-                        else if (x < 0.25) cmd = 'LEFT';
-                        else if (x > 0.75) cmd = 'RIGHT';
-                        else cmd = 'MOVE';
-                    }
-
-                    if (cmd !== 'NONE') dispatchCommand(cmd);
-                }
-            }
-            requestAnimationFrame(predictLoop);
-        }
-
-        // External Link to button
-        window.initApp = initApp;
-        createGestureRecognizer();
-    </script>
+    <title>WebXR Ultra Controller - Neural Link MK-IV</title>
     
     <style>
         :root {
             --neon-blue: #00f2ff;
-            --neon-green: #0bffa3;
-            --neon-red: #ff3c3c;
-            --neon-orange: #ff983c;
-            --glass: rgba(5, 10, 20, 0.92);
+            --neon-green: #00ff88;
+            --neon-red: #ff3131;
+            --neon-yellow: #f8ff00;
+            --neon-purple: #bc13fe;
+            --glass: rgba(5, 8, 15, 0.95);
             --font: 'JetBrains Mono', 'Inter', monospace;
         }
 
@@ -194,10 +37,10 @@
             position: absolute;
             width: 100%; height: 100%;
             object-fit: cover;
-            transform: scale(1.15);
+            transform: scale(1.18);
         }
 
-        /* HUD Overlay */
+        /* Specialized HUD Overlay */
         .hud {
             position: absolute;
             inset: 0;
@@ -211,14 +54,14 @@
 
         .panel {
             background: var(--glass);
-            border-left: 3px solid var(--neon-blue);
-            backdrop-filter: blur(15px);
-            padding: 10px 15px;
+            border: 1px solid rgba(0, 242, 255, 0.1);
+            backdrop-filter: blur(20px);
+            padding: 12px 18px;
             border-radius: 4px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.8);
         }
 
-        .label { font-size: 8px; font-weight: 800; color: var(--neon-blue); opacity: 0.8; margin-bottom: 2px; }
+        .label { font-size: 8px; font-weight: 800; color: var(--neon-blue); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 2px; }
         .value { font-size: 14px; font-weight: 900; }
 
         .header, .footer { display: flex; justify-content: space-between; align-items: flex-start; }
@@ -232,138 +75,328 @@
         }
 
         .cmd-display {
-            font-size: 28px;
+            font-size: 32px;
             font-weight: 950;
             color: var(--neon-blue);
+            text-shadow: 0 0 20px var(--neon-blue);
             text-transform: uppercase;
-            letter-spacing: 6px;
-            padding: 10px 30px;
+            letter-spacing: 8px;
+            padding: 15px 40px;
             background: rgba(0, 242, 255, 0.05);
-            border: 1px solid rgba(0, 242, 255, 0.2);
-            border-radius: 100px;
+            border-bottom: 4px solid var(--neon-blue);
+            border-radius: 4px;
             opacity: 0;
-            transform: scale(0.8);
-            transition: 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+            transform: scale(0.9);
+            transition: 0.3s cubic-bezier(0.19, 1, 0.22, 1);
         }
 
         .cmd-display.active { opacity: 1; transform: scale(1); }
 
+        .action-icon {
+            font-size: 40px;
+            margin-bottom: 15px;
+            filter: drop-shadow(0 0 10px white);
+            transition: 0.2s;
+        }
+
+        /* Cooldown Bar */
         .cooldown {
-            width: 140px; height: 1px;
+            width: 160px; height: 1px;
             background: rgba(255,255,255,0.1);
-            margin: 15px auto 0;
+            margin: 20px auto 0;
             position: relative;
         }
         .cooldown-fill { position: absolute; height: 100%; width: 0; background: var(--neon-blue); }
 
-        .pinch-indicator {
-            width: 50px; height: 50px;
-            border: 2px solid rgba(255,255,255,0.1);
-            border-radius: 50%;
-            margin-bottom: 20px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 20px;
-            transition: 0.2s;
-        }
-        .pinch-indicator.active {
-            border-color: var(--neon-orange);
-            color: var(--neon-orange);
-            box-shadow: 0 0 20px rgba(255, 152, 60, 0.4);
-            transform: scale(1.1);
-        }
-
-        .dot { width: 8px; height: 8px; border-radius: 50%; background: #333; transition: 0.3s; }
+        /* Status Lights */
+        .status-badge { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 800; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #222; transition: 0.3s; }
         .dot.active { background: var(--neon-green); box-shadow: 0 0 10px var(--neon-green); }
 
-        .flash { position: absolute; inset: 0; background: radial-gradient(circle, transparent, rgba(255,0,0,0.4)); display: none; z-index: 5; animation: blk 0.3s infinite alternate; }
-        @keyframes blk { from { opacity: 0; } to { opacity: 1; } }
+        /* Critical Overlays */
+        .overlay { position: absolute; inset: 0; z-index: 5; display: none; pointer-events: none; }
+        .overlay-emergency { background: radial-gradient(circle, transparent 20%, rgba(255, 0, 0, 0.5) 100%); animation: flash 0.3s infinite alternate; }
+        .overlay-confirm { background: radial-gradient(circle, transparent 20%, rgba(0, 255, 136, 0.3) 100%); animation: pulse-g 0.5s 1; }
+        .overlay-cancel { background: radial-gradient(circle, transparent 20%, rgba(255, 59, 59, 0.3) 100%); animation: pulse-r 0.5s 1; }
 
-        /* Splash Screen */
+        @keyframes flash { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes pulse-g { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } }
+        @keyframes pulse-r { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } }
+
+        /* Initial Setup */
         #splash {
             position: fixed; inset: 0; z-index: 1000;
-            background: #030610;
+            background: #02050a;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            transition: 0.5s;
+            transition: 0.6s;
         }
         #splash.fade-out { opacity: 0; pointer-events: none; }
-
-        .btn {
+        .btn-link {
             background: var(--neon-blue);
-            border: none; padding: 15px 40px; font-weight: 900; letter-spacing: 2px;
-            border-radius: 4px; cursor: pointer; color: black;
+            color: black; border: none; padding: 20px 60px;
+            font-weight: 900; font-size: 18px; letter-spacing: 5px;
+            border-radius: 4px; cursor: pointer; transition: 0.3s;
         }
+        .btn-link:hover { box-shadow: 0 0 40px var(--neon-blue); transform: translateY(-3px); }
 
-        .lens { position: absolute; inset: 0; background: radial-gradient(circle, transparent 30%, rgba(0,0,0,0.85) 85%); z-index: 20; }
-        .target { position: absolute; width:10px; height: 10px; border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+        .lens { position: absolute; inset: 0; background: radial-gradient(circle, transparent 35%, rgba(0,0,0,0.9) 85%); z-index: 20; }
+        .cross { position: absolute; width: 30px; height: 30px; border: 1px solid rgba(0, 242, 255, 0.15); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%,-50%); }
 
-        .hidden { display: none; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
     <div id="splash">
-        <div style="font-size: 40px; margin-bottom: 20px;">👁️</div>
-        <h1 style="letter-spacing: 12px; font-size: 20px; color: var(--neon-blue);">NEURAL LINK V3</h1>
-        <p id="init-status" style="color: #444; font-size: 10px; margin-bottom: 30px;">BOOTING AI MODULE...</p>
-        <button id="btn-start" class="btn hidden" onclick="initApp()">ESTABLISH CONNECTION</button>
+        <h1 style="letter-spacing: 15px; font-size: 24px;">NEURAL LINK ULTRA</h1>
+        <p id="status-txt" style="color: #444; font-size: 10px; margin-bottom: 40px; letter-spacing: 3px;">SEARCHING FOR AI MODULES...</p>
+        <button id="btn-init" class="btn-link hidden" onclick="startInterface()">ESTABLISH SYNC</button>
     </div>
 
+    <!-- Hidden source -->
     <video id="input_video" class="hidden" playsinline autoplay muted></video>
 
     <!-- Stereo View -->
     <div class="viewport">
         <video id="video-L" class="camera-feed" playsinline autoplay muted></video>
-        <div class="flash" id="flash-L"></div>
-        <div class="target"></div>
+        <div id="emer-L" class="overlay overlay-emergency"></div>
+        <div id="conf-L" class="overlay overlay-confirm"></div>
+        <div id="canc-L" class="overlay overlay-cancel"></div>
         <div class="hud">
             <div class="header">
+                <div class="panel"><div class="label">Voltage</div><div class="value">24.2V</div></div>
                 <div class="panel">
-                    <div class="label">Status</div>
-                    <div class="dot" id="dot-L"></div>
-                </div>
-                <div class="panel">
-                    <div class="label">Depth</div>
-                    <div class="value" id="z-L">0.0</div>
+                    <div class="status-badge"><div id="dot-L" class="dot"></div>LINK: SYNCED</div>
                 </div>
             </div>
             <div class="center">
-                <div class="pinch-indicator" id="pinch-L">🤏</div>
-                <div class="cmd-display" id="cmd-L">STANDBY</div>
-                <div class="cooldown"><div class="cooldown-fill" id="cool-L"></div></div>
+                <div id="icon-L" class="action-icon">◌</div>
+                <div id="cmd-L" class="cmd-display">INITIALIZED</div>
+                <div class="cooldown"><div id="cool-L" class="cooldown-fill"></div></div>
             </div>
             <div class="footer">
-                <div class="panel"><div class="label">Lat</div><div class="value" id="x-L">0.0</div></div>
-                <div class="panel"><div class="label">Lng</div><div class="value" id="y-L">0.0</div></div>
+                <div class="panel"><div class="label">Coordinate X</div><div id="x-L" class="value">0.0</div></div>
+                <div class="panel"><div class="label">Coordinate Z</div><div id="z-L" class="value">0.0</div></div>
             </div>
         </div>
-        <div class="lens"></div>
+        <div class="lens"></div><div class="cross"></div>
     </div>
 
     <div class="viewport">
         <video id="video-R" class="camera-feed" playsinline autoplay muted></video>
-        <div class="flash" id="flash-R"></div>
-        <div class="target"></div>
+        <div id="emer-R" class="overlay overlay-emergency"></div>
+        <div id="conf-R" class="overlay overlay-confirm"></div>
+        <div id="canc-R" class="overlay overlay-cancel"></div>
         <div class="hud">
             <div class="header">
+                <div class="panel"><div class="label">Voltage</div><div class="value">24.2V</div></div>
                 <div class="panel">
-                    <div class="label">Status</div>
-                    <div class="dot" id="dot-R"></div>
-                </div>
-                <div class="panel">
-                    <div class="label">Depth</div>
-                    <div class="value" id="z-R">0.0</div>
+                    <div class="status-badge"><div id="dot-R" class="dot"></div>LINK: SYNCED</div>
                 </div>
             </div>
             <div class="center">
-                <div class="pinch-indicator" id="pinch-R">🤏</div>
-                <div class="cmd-display" id="cmd-R">STANDBY</div>
-                <div class="cooldown"><div class="cooldown-fill" id="cool-R"></div></div>
+                <div id="icon-R" class="action-icon">◌</div>
+                <div id="cmd-R" class="cmd-display">INITIALIZED</div>
+                <div class="cooldown"><div id="cool-R" class="cooldown-fill"></div></div>
             </div>
             <div class="footer">
-                <div class="panel"><div class="label">Lat</div><div class="value" id="x-R">0.0</div></div>
-                <div class="panel"><div class="label">Lng</div><div class="value" id="y-R">0.0</div></div>
+                <div class="panel"><div class="label">Coordinate X</div><div id="x-R" class="value">0.0</div></div>
+                <div class="panel"><div class="label">Coordinate Z</div><div id="z-R" class="value">0.0</div></div>
             </div>
         </div>
-        <div class="lens"></div>
+        <div class="lens"></div><div class="cross"></div>
     </div>
+
+    <!-- MediaPipe Script -->
+    <script type="module">
+        import {
+            GestureRecognizer,
+            FilesetResolver
+        } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+
+        let gestureRecognizer;
+        let video = document.getElementById('input_video');
+        let statusTxt = document.getElementById('status-txt');
+        let btnInit = document.getElementById('btn-init');
+        let splash = document.getElementById('splash');
+
+        // History for Temporal Gestures
+        let history = []; 
+        const MAX_HISTORY = 20;
+
+        // HUD State
+        let lastCommand = 'NONE';
+        let cooldown = false;
+        const CMD_COOLDOWN = 1000;
+
+        const ui = {
+            cmd: [document.getElementById('cmd-L'), document.getElementById('cmd-R')],
+            icon: [document.getElementById('icon-L'), document.getElementById('icon-R')],
+            cool: [document.getElementById('cool-L'), document.getElementById('cool-R')],
+            dot: [document.getElementById('dot-L'), document.getElementById('dot-R')],
+            x: [document.getElementById('x-L'), document.getElementById('x-R')],
+            z: [document.getElementById('z-L'), document.getElementById('z-R')],
+            emer: [document.getElementById('emer-L'), document.getElementById('emer-R')],
+            conf: [document.getElementById('conf-L'), document.getElementById('conf-R')],
+            canc: [document.getElementById('canc-L'), document.getElementById('canc-R')]
+        };
+
+        const GESTURE_MAP = {
+            'START': '🆙', 'STOP': '🛑', 'PICK': '✊', 'DROP': '🤏', 'RETURN': '✌️',
+            'MOVE_FORWARD': '⬆️', 'LEFT': '⬅️', 'RIGHT': '➡️', 'MOVE_UP': '⏫', 'MOVE_DOWN': '⏬',
+            'ROTATE_RIGHT': '↻', 'ROTATE_LEFT': '↺', 'EMERGENCY_STOP': '🚨',
+            'SLOW_MODE': '🐌', 'FAST_MODE': '⚡', 'CONFIRM': '✅', 'CANCEL': '❌'
+        };
+
+        async function initAI() {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+            gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+                    delegate: "GPU"
+                },
+                runningMode: "VIDEO",
+                numHands: 1
+            });
+            statusTxt.textContent = "ULTRALINK READY";
+            btnInit.classList.remove('hidden');
+        }
+
+        window.startInterface = async () => {
+            splash.classList.add('fade-out');
+            setTimeout(() => splash.style.display = 'none', 600);
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                video.srcObject = stream;
+                document.getElementById('video-L').srcObject = stream;
+                document.getElementById('video-R').srcObject = stream;
+                video.play();
+                requestAnimationFrame(loop);
+                if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+            } catch (err) { alert(err.message); }
+        };
+
+        function dispatch(cmd) {
+            if (cooldown || cmd === 'NONE' || (cmd === lastCommand && cmd !== 'EMERGENCY_STOP')) return;
+            
+            lastCommand = cmd;
+            cooldown = true;
+
+            // HUD Feedback
+            ui.cmd.forEach(el => { el.textContent = cmd; el.classList.add('active'); });
+            ui.icon.forEach(el => el.textContent = GESTURE_MAP[cmd] || '◌');
+            ui.cool.forEach(el => { 
+                el.style.transition = 'none'; el.style.width = '100%';
+                setTimeout(() => { el.style.transition = `width ${CMD_COOLDOWN}ms linear`; el.style.width = '0'; }, 10);
+            });
+
+            // Critical Overlays
+            if (cmd === 'EMERGENCY_STOP') ui.emer.forEach(o => o.style.display = 'block');
+            else ui.emer.forEach(o => o.style.display = 'none');
+
+            if (cmd === 'CONFIRM') { 
+                ui.conf.forEach(o => { o.style.display = 'block'; setTimeout(() => o.style.display = 'none', 500); });
+                if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            }
+            if (cmd === 'CANCEL') {
+                ui.canc.forEach(o => { o.style.display = 'block'; setTimeout(() => o.style.display = 'none', 500); });
+                if (navigator.vibrate) navigator.vibrate(200);
+            }
+
+            // External dispatch
+            console.log(`[ULTRA] Dispatching: ${cmd}`);
+            window.parent.postMessage({ type: 'ULTRA_CMD', cmd }, '*');
+
+            setTimeout(() => { 
+                cooldown = false; 
+                ui.cmd.forEach(el => el.classList.remove('active'));
+            }, CMD_COOLDOWN);
+        }
+
+        async function loop() {
+            if (video.currentTime !== -1) {
+                const results = await gestureRecognizer.recognizeForVideo(video, performance.now());
+                const hasHands = results.landmarks && results.landmarks.length > 0;
+                
+                ui.dot.forEach(d => d.classList.toggle('active', hasHands));
+
+                if (hasHands) {
+                    const lms = results.landmarks[0];
+                    const gesture = results.gestures[0] && results.gestures[0][0] ? results.gestures[0][0].categoryName : 'None';
+                    
+                    // Add to history
+                    const pos = { x: lms[8].x, y: lms[8].y, z: lms[8].z, time: performance.now() };
+                    history.push(pos);
+                    if (history.length > MAX_HISTORY) history.shift();
+
+                    ui.x.forEach(el => el.textContent = pos.x.toFixed(2));
+                    ui.z.forEach(el => el.textContent = (pos.z * -100).toFixed(1));
+
+                    let cmd = 'NONE';
+
+                    // 1. Static Native Gestures
+                    if (gesture === 'Thumb_Up') cmd = 'START';
+                    else if (gesture === 'Open_Palm') {
+                        // Check for Emergency Stop (Splayed fingers)
+                        const spread = Math.abs(lms[4].x - lms[20].x);
+                        if (spread > 0.4) cmd = 'EMERGENCY_STOP';
+                        else cmd = 'STOP';
+                    }
+                    else if (gesture === 'Closed_Fist') cmd = 'PICK';
+                    else if (gesture === 'Victory') cmd = 'RETURN';
+                    else if (gesture === 'Pointing_Up') {
+                        // Directionals based on offset from center (crosshair)
+                        const dx = pos.x - 0.5;
+                        const dy = pos.y - 0.5;
+                        if (dy < -0.2) cmd = 'MOVE_UP';
+                        else if (dy > 0.2) cmd = 'MOVE_DOWN';
+                        else if (dx < -0.2) cmd = 'LEFT';
+                        else if (dx > 0.2) cmd = 'RIGHT';
+                        else cmd = 'MOVE_FORWARD';
+                    }
+
+                    // 2. Custom Pose Detection
+                    const dist4_8 = Math.sqrt(Math.pow(lms[4].x - lms[8].x, 2) + Math.pow(lms[4].y - lms[8].y, 2));
+                    if (dist4_8 < 0.04 && gesture !== 'Closed_Fist') cmd = 'DROP';
+
+                    // 3. Finger Count
+                    const indexUp = lms[8].y < lms[6].y;
+                    const middleUp = lms[12].y < lms[10].y;
+                    const ringUp = lms[16].y < lms[14].y;
+                    const pinkyUp = lms[20].y < lms[18].y;
+                    const count = [indexUp, middleUp, ringUp, pinkyUp].filter(v => v).length;
+                    
+                    if (count === 3 && ringUp) cmd = 'SLOW_MODE';
+                    if (count === 2 && indexUp && middleUp && !gesture.includes('Victory')) cmd = 'FAST_MODE';
+
+                    // 4. Temporal Gestures (History Based)
+                    if (history.length === MAX_HISTORY) {
+                        const first = history[0];
+                        const last = history[MAX_HISTORY-1];
+                        const dz = last.z - first.z;
+                        
+                        // Push/Pull (Confirm/Cancel)
+                        if (dz < -0.12) cmd = 'CONFIRM';
+                        if (dz > 0.12) cmd = 'CANCEL';
+
+                        // Circular Motion (Winding Order check)
+                        let winding = 0;
+                        for (let i = 1; i < history.length - 1; i++) {
+                            const v1 = { x: history[i].x - 0.5, y: history[i].y - 0.5 };
+                            const v2 = { x: history[i+1].x - 0.5, y: history[i+1].y - 0.5 };
+                            winding += (v1.x * v2.y - v1.y * v2.x);
+                        }
+                        if (winding > 0.015) cmd = 'ROTATE_RIGHT';
+                        else if (winding < -0.015) cmd = 'ROTATE_LEFT';
+                    }
+
+                    if (cmd !== 'NONE') dispatch(cmd);
+                }
+            }
+            requestAnimationFrame(loop);
+        }
+
+        initAI();
+    </script>
 </body>
 </html>
