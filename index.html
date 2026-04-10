@@ -1,168 +1,495 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Cardboard Camera Passthrough</title>
+    <title>AMR VR Spatial Controller</title>
+    <!-- MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    
     <style>
-        body,
-        html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: black;
+        :root {
+            --neon-blue: #00f2ff;
+            --neon-green: #00ff88;
+            --neon-red: #ff3131;
+            --neon-yellow: #f8ff00;
+            --glass-bg: rgba(10, 15, 30, 0.85);
+            --industrial-font: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            background-color: #000;
             overflow: hidden;
             display: flex;
-            /* Creates the split screen */
+            font-family: var(--industrial-font);
         }
 
-        #ui {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 1000;
-            background: rgba(10, 15, 30, 0.95);
-            color: white;
-            padding: 40px;
-            border-radius: 20px;
-            text-align: center;
-            font-family: system-ui, -apple-system, sans-serif;
-            border: 2px solid #00d4ff;
-            box-shadow: 0 0 40px rgba(0, 212, 255, 0.3);
-            width: 80%;
-            max-width: 400px;
-        }
-
-        button {
-            padding: 16px 32px;
-            font-size: 18px;
-            border: none;
-            background: #00d4ff;
-            color: #000;
-            border-radius: 12px;
-            cursor: pointer;
-            font-weight: 900;
-            text-transform: uppercase;
-        }
-
-        /* The Cardboard Split Screen Layout */
-        .eye {
+        /* Cardboard Split Screen */
+        .viewport {
             width: 50%;
             height: 100%;
             position: relative;
             overflow: hidden;
-            border-right: 2px solid #111;
-            /* subtle divider */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-right: 1px solid #111;
             box-sizing: border-box;
         }
 
-        /* Two video elements pointing to the same camera stream */
-        video {
+        .camera-feed {
             position: absolute;
-            top: 50%;
-            left: 50%;
             width: 100%;
             height: 100%;
             object-fit: cover;
-            /* Ensures video fills the eye completely and matches focal magnification */
-            transform: translate(-50%, -50%) scale(1.15);
+            transform: scale(1.1); /* Slight zoom for VR lens correction */
         }
 
-        /* Simulates the 25-37mm Biconvex Lenses & helps guide the 66mm IPD */
+        /* HUD Overlay */
+        .hud-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 40px;
+            box-sizing: border-box;
+        }
+
+        .hud-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .hud-center {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex-grow: 1;
+        }
+
+        .hud-bottom {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        /* HUD Components */
+        .panel {
+            background: var(--glass-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            border-radius: 12px;
+            color: #fff;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .label {
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--neon-blue);
+            margin-bottom: 4px;
+        }
+
+        .value {
+            font-size: 18px;
+            font-weight: 900;
+            font-family: monospace;
+        }
+
+        .command-badge {
+            font-size: 24px;
+            font-weight: 900;
+            padding: 20px 40px;
+            border-radius: 50px;
+            background: rgba(0, 242, 255, 0.2);
+            border: 2px solid var(--neon-blue);
+            color: var(--neon-blue);
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            box-shadow: 0 0 30px rgba(0, 242, 255, 0.4);
+            transform: scale(0.9);
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            opacity: 0;
+        }
+
+        .command-badge.active {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .gesture-indicator {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+        }
+
+        /* Emergency State */
+        .emergency-overlay {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle, transparent 40%, rgba(255, 0, 0, 0.4) 100%);
+            z-index: 5;
+            display: none;
+            pointer-events: none;
+            animation: pulse-red 0.5s infinite alternate;
+        }
+
+        @keyframes pulse-red {
+            from { opacity: 0.3; }
+            to { opacity: 1; }
+        }
+
+        /* Lens Mask */
         .lens-mask {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 120%;
-            height: 120%;
-            transform: translate(-50%, -50%);
-            /* Creates a circular vignette fading to black at the edges */
-            background: radial-gradient(circle at center, transparent 35%, rgba(0,0,0,0.85) 65%, black 80%);
+            inset: 0;
+            background: radial-gradient(circle, transparent 30%, rgba(0, 0, 0, 0.8) 70%, #000 85%);
+            z-index: 20;
             pointer-events: none;
-            z-index: 10;
         }
 
+        /* Initial UI */
+        #splash {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            background: #050a10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+        }
 
+        #splash h1 {
+            font-size: 32px;
+            letter-spacing: 8px;
+            margin-bottom: 30px;
+            background: linear-gradient(to right, var(--neon-blue), var(--neon-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .btn-start {
+            padding: 20px 60px;
+            font-size: 18px;
+            border: none;
+            background: var(--neon-blue);
+            color: #000;
+            font-weight: 900;
+            border-radius: 12px;
+            cursor: pointer;
+            letter-spacing: 4px;
+            transition: all 0.3s;
+        }
+
+        .btn-start:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 40px var(--neon-blue);
+        }
+
+        /* Crosshair */
+        .crosshair {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 1px solid rgba(0, 242, 255, 0.3);
+            border-radius: 50%;
+        }
+
+        .hidden { display: none !important; }
     </style>
 </head>
-
 <body>
-    <!-- User Interface -->
-    <div id="ui">
-        <h2 style="margin-top:0;">📱 Cardboard AR</h2>
-        <p style="color: #aaa;">Shows your phone's rear camera mapped perfectly for Cardboard VR.</p>
-        <button id="start-btn">ENABLE CAMERA</button>
+    <div id="splash">
+        <h1>AMR SPATIAL CONTROL</h1>
+        <p style="color: #666; max-width: 300px; margin-bottom: 40px;">Industrial Mobile VR interface with hand gesture recognition.</p>
+        <button class="btn-start" onclick="initApp()">INITIALIZE SYSTEM</button>
+        <p style="font-size: 10px; color: #444; margin-top: 20px;">REQUIRES CAMERA & GYRO ACCESS</p>
     </div>
 
-    <!-- Left Eye View -->
-    <div class="eye">
-        <video id="video-left" autoplay playsinline webkit-playsinline muted></video>
+    <!-- Hidden shared video source -->
+    <video id="input_video" class="hidden" playsinline autoplay muted></video>
+
+    <!-- Left Eye -->
+    <div class="viewport">
+        <video id="video-L" class="camera-feed" playsinline autoplay muted></video>
+        <div class="emergency-overlay" id="emergency-L"></div>
+        <div class="hud-overlay">
+            <div class="hud-top">
+                <div class="panel">
+                    <div class="label">Battery</div>
+                    <div class="value" id="bat-val-L">87%</div>
+                </div>
+                <div class="panel">
+                    <div class="label">Signal</div>
+                    <div class="value" style="color:var(--neon-green)">94ms</div>
+                </div>
+            </div>
+            <div class="hud-center">
+                <div class="gesture-indicator" id="gist-icon-L">—</div>
+                <div class="command-badge" id="cmd-badge-L">READY</div>
+            </div>
+            <div class="hud-bottom">
+                <div class="panel">
+                    <div class="label">X - Coord</div>
+                    <div class="value" id="x-val-L">0.00</div>
+                </div>
+                <div class="panel">
+                    <div class="label">Y - Coord</div>
+                    <div class="value" id="y-val-L">0.00</div>
+                </div>
+            </div>
+        </div>
         <div class="lens-mask"></div>
+        <div class="crosshair"></div>
     </div>
 
-    <!-- Right Eye View -->
-    <div class="eye">
-        <video id="video-right" autoplay playsinline webkit-playsinline muted></video>
+    <!-- Right Eye -->
+    <div class="viewport">
+        <video id="video-R" class="camera-feed" playsinline autoplay muted></video>
+        <div class="emergency-overlay" id="emergency-R"></div>
+        <div class="hud-overlay">
+            <div class="hud-top">
+                <div class="panel">
+                    <div class="label">Battery</div>
+                    <div class="value" id="bat-val-R">87%</div>
+                </div>
+                <div class="panel">
+                    <div class="label">Signal</div>
+                    <div class="value" style="color:var(--neon-green)">94ms</div>
+                </div>
+            </div>
+            <div class="hud-center">
+                <div class="gesture-indicator" id="gist-icon-R">—</div>
+                <div class="command-badge" id="cmd-badge-R">READY</div>
+            </div>
+            <div class="hud-bottom">
+                <div class="panel">
+                    <div class="label">X - Coord</div>
+                    <div class="value" id="x-val-R">0.00</div>
+                </div>
+                <div class="panel">
+                    <div class="label">Y - Coord</div>
+                    <div class="value" id="y-val-R">0.00</div>
+                </div>
+            </div>
+        </div>
         <div class="lens-mask"></div>
+        <div class="crosshair"></div>
     </div>
-
-
 
     <script>
-        const startBtn = document.getElementById('start-btn');
-        const ui = document.getElementById('ui');
-        const videoLeft = document.getElementById('video-left');
-        const videoRight = document.getElementById('video-right');
+        const videoElement = document.getElementById('input_video');
+        const videoL = document.getElementById('video-L');
+        const videoR = document.getElementById('video-R');
+        const splash = document.getElementById('splash');
 
-        const playVideo = (stream) => {
-            // Feed stream to BOTH eyes
-            videoLeft.srcObject = stream;
-            videoRight.srcObject = stream;
+        // UI elements pointers
+        const cmdBadges = [document.getElementById('cmd-badge-L'), document.getElementById('cmd-badge-R')];
+        const gistIcons = [document.getElementById('gist-icon-L'), document.getElementById('gist-icon-R')];
+        const emergencyOverlays = [document.getElementById('emergency-L'), document.getElementById('emergency-R')];
+        const xValues = [document.getElementById('x-val-L'), document.getElementById('x-val-R')];
+        const yValues = [document.getElementById('y-val-L'), document.getElementById('y-val-R')];
 
-            ui.style.display = 'none';
+        let hands;
+        let camera;
+        let lastGesture = 'NONE';
+        let gestureHistory = [];
+        const MAX_HISTORY = 30;
 
-            // Try to force fullscreen automatically for better VR immersion
-            if (document.documentElement.requestFullscreen) {
-                document.documentElement.requestFullscreen().catch(e => console.log("Fullscreen blocked on load", e));
-            }
+        const GESTURE_MAP = {
+            'MOVE': { icon: '🚀', color: 'var(--neon-blue)' },
+            'LEFT': { icon: '⬅️', color: 'var(--neon-blue)' },
+            'RIGHT': { icon: '➡️', color: 'var(--neon-blue)' },
+            'MOVE_UP': { icon: '⬆️', color: 'var(--neon-blue)' },
+            'MOVE_DOWN': { icon: '⬇️', color: 'var(--neon-blue)' },
+            'STOP': { icon: '🛑', color: 'var(--neon-yellow)' },
+            'PICK': { icon: '📦', color: 'var(--neon-green)' },
+            'FAST': { icon: '⚡', color: 'var(--neon-green)' },
+            'SLOW': { icon: '🐌', color: 'var(--neon-yellow)' },
+            'RETURN_HOME': { icon: '🏠', color: 'var(--neon-blue)' },
+            'EMERGENCY_STOP': { icon: '⚠️', color: 'var(--neon-red)' }
         };
 
-        startBtn.addEventListener('click', async () => {
-            try {
-                // Request physical rear camera
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: { exact: "environment" } },
-                    audio: false
-                });
-                playVideo(stream);
-            } catch (err) {
-                // Fallback 1: Try without 'exact'
-                try {
-                    const fallbackStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: "environment" },
-                        audio: false
-                    });
-                    playVideo(fallbackStream);
-                } catch (fallbackErr) {
-                    // Fallback 2: Any camera available (Desktop PCs)
-                    try {
-                        const anyStream = await navigator.mediaDevices.getUserMedia({
-                            video: true,
-                            audio: false
-                        });
-                        playVideo(anyStream);
-                    } catch (finalErr) {
-                        alert('Camera access denied! Make sure you are using https.\nError: ' + finalErr.message);
+        function updateHUD(cmd) {
+            if (cmd === lastGesture) return;
+            lastGesture = cmd;
+
+            const config = GESTURE_MAP[cmd] || { icon: '—', color: 'var(--neon-blue)' };
+
+            cmdBadges.forEach(b => {
+                b.textContent = cmd;
+                b.style.borderColor = config.color;
+                b.style.color = config.color;
+                b.classList.toggle('active', cmd !== 'NONE');
+            });
+
+            gistIcons.forEach(i => {
+                i.textContent = config.icon;
+            });
+
+            const isEmergency = cmd === 'EMERGENCY_STOP';
+            emergencyOverlays.forEach(o => {
+                o.style.display = isEmergency ? 'block' : 'none';
+            });
+
+            if (cmd !== 'NONE') {
+                console.log(`Command Dispatched: ${cmd}`);
+                // Here we would call window.parent.postMessage({ type: 'AMR_CMD', cmd }, '*');
+            }
+        }
+
+        function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Track positions
+                const x = landmarks[8].x;
+                const y = landmarks[8].y;
+                gestureHistory.push({ x, y, timestamp: Date.now() });
+                if (gestureHistory.length > MAX_HISTORY) gestureHistory.shift();
+
+                xValues.forEach(v => v.textContent = x.toFixed(2));
+                yValues.forEach(v => v.textContent = y.toFixed(2));
+
+                // Basic Pose Detection
+                const isIndexUp = landmarks[8].y < landmarks[6].y;
+                const isMiddleUp = landmarks[12].y < landmarks[10].y;
+                const isRingUp = landmarks[16].y < landmarks[14].y;
+                const isPinkyUp = landmarks[20].y < landmarks[18].y;
+                const isThumbClose = Math.abs(landmarks[4].x - landmarks[13].x) < 0.1;
+
+                const extendedCount = [isIndexUp, isMiddleUp, isRingUp, isPinkyUp].filter(v => v).length;
+
+                // 1. STOP - Open Palm
+                if (extendedCount >= 3) {
+                    // Check if hand is raised high for EMERGENCY_STOP
+                    if (landmarks[0].y < 0.4) {
+                        updateHUD('EMERGENCY_STOP');
+                    } else {
+                        updateHUD('STOP');
+                    }
+                    return;
+                }
+
+                // 2. PICK - Fist
+                if (extendedCount === 0) {
+                    updateHUD('PICK');
+                    return;
+                }
+
+                // 3. FAST / SLOW - Two Finger Logic
+                if (extendedCount === 2 && isIndexUp && isMiddleUp) {
+                    if (y < 0.3) updateHUD('FAST');
+                    else if (y > 0.7) updateHUD('SLOW');
+                    else updateHUD('MOVE');
+                    return;
+                }
+
+                // 4. Directional - Single Finger (Index)
+                if (extendedCount === 1 && isIndexUp) {
+                    // Positional mapping
+                    if (y < 0.2) updateHUD('MOVE_UP');
+                    else if (y > 0.8) updateHUD('MOVE_DOWN');
+                    else if (x < 0.3) updateHUD('LEFT');
+                    else if (x > 0.7) updateHUD('RIGHT');
+                    else updateHUD('MOVE');
+                    return;
+                }
+
+                // 5. Dynamic Gestures (Swipe / Circular) - Requires history
+                if (gestureHistory.length > 10) {
+                    const first = gestureHistory[0];
+                    const last = gestureHistory[gestureHistory.length - 1];
+                    const dx = last.x - first.x;
+                    const dy = last.y - first.y;
+                    const time = last.timestamp - first.timestamp;
+
+                    // Swipe Up (mapped to MOVE) - Quick motion
+                    if (dy < -0.3 && time < 400) {
+                        updateHUD('MOVE');
+                        return;
+                    }
+
+                    // Circular Motion detection (Simplified)
+                    let isCircular = false;
+                    if (gestureHistory.length > 20) {
+                        const mid = gestureHistory[Math.floor(gestureHistory.length/2)];
+                        // If center of motion is significantly different from start/end
+                        const centX = (first.x + last.x) / 2;
+                        const dist = Math.abs(mid.x - centX);
+                        if (dist > 0.15 && Math.abs(dx) < 0.1) {
+                            updateHUD('RETURN_HOME');
+                            return;
+                        }
                     }
                 }
+
+            } else {
+                updateHUD('NONE');
             }
-        });
+        }
 
+        async function initApp() {
+            splash.style.display = 'none';
+            
+            hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
 
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.6,
+                minTrackingConfidence: 0.6
+            });
+
+            hands.onResults(onResults);
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: 640, height: 480 }
+                });
+                
+                videoElement.srcObject = stream;
+                videoL.srcObject = stream;
+                videoR.srcObject = stream;
+
+                camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await hands.send({image: videoElement});
+                    },
+                    width: 640,
+                    height: 480
+                });
+                camera.start();
+
+                // Go Fullscreen for VR
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen();
+                }
+            } catch (err) {
+                alert("Critical System Error: " + err.message);
+            }
+        }
     </script>
 </body>
-
 </html>
