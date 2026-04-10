@@ -3,346 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>WebXR Industrial AMR Controller</title>
-    <!-- MediaPipe Hands -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <title>WebXR AMR Controller V3 - Neural Link</title>
     
-    <style>
-        :root {
-            --neon-blue: #00f2ff;
-            --neon-green: #00ff88;
-            --neon-red: #ff3131;
-            --neon-yellow: #f8ff00;
-            --glass-bg: rgba(7, 10, 20, 0.9);
-            --industrial-font: 'Inter', system-ui, -apple-system, sans-serif;
-            --panel-border: 1px solid rgba(0, 242, 255, 0.2);
-        }
+    <!-- MediaPipe Tasks Vision ESM -->
+    <script type="module">
+        import {
+            GestureRecognizer,
+            FilesetResolver,
+            DrawingUtils
+        } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
-        body, html {
-            margin: 0; padding: 0;
-            width: 100%; height: 100%;
-            background-color: #000;
-            overflow: hidden;
-            display: flex;
-            font-family: var(--industrial-font);
-            color: white;
-            user-select: none;
-        }
+        // UI Globals
+        const splash = document.getElementById('splash');
+        const statusText = document.getElementById('init-status');
+        const btnStart = document.getElementById('btn-start');
 
-        /* Cardboard Split Screen Viewports */
-        .viewport {
-            width: 50%;
-            height: 100%;
-            position: relative;
-            overflow: hidden;
-            box-sizing: border-box;
-            border-right: 1px solid #111;
-        }
+        let gestureRecognizer;
+        let runningMode = "IMAGE";
+        let webcamRunning = false;
+        let videoElement = document.getElementById('input_video');
+        let lastVideoTime = -1;
 
-        .camera-feed {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transform: scale(1.1); /* VR Lens correction factor */
-        }
-
-        /* HUD Overlay Layer */
-        .hud-overlay {
-            position: absolute;
-            inset: 0;
-            z-index: 10;
-            pointer-events: none;
-            padding: 40px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-        }
-
-        /* Glassmorphism Panels */
-        .panel {
-            background: var(--glass-bg);
-            border: var(--panel-border);
-            backdrop-filter: blur(12px);
-            padding: 10px 18px;
-            border-radius: 8px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-        }
-
-        .footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-        }
-
-        .label {
-            font-size: 9px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: var(--neon-blue);
-            margin-bottom: 2px;
-        }
-
-        .value {
-            font-size: 16px;
-            font-weight: 900;
-            font-family: 'JetBrains Mono', monospace;
-        }
-
-        /* Center Command Feedback */
-        .center-hud {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-        }
-
-        .command-box {
-            font-size: 26px;
-            font-weight: 950;
-            padding: 16px 40px;
-            border-radius: 4px;
-            background: rgba(0, 242, 255, 0.1);
-            border-left: 4px solid var(--neon-blue);
-            letter-spacing: 5px;
-            text-transform: uppercase;
-            opacity: 0;
-            transform: translateY(20px);
-            transition: all 0.3s cubic-bezier(0.19, 1, 0.22, 1);
-        }
-
-        .command-box.active {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        /* Cooldown Progress Bar */
-        .cooldown-bar {
-            width: 120px;
-            height: 2px;
-            background: rgba(255, 255, 255, 0.1);
-            margin-top: 10px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .cooldown-fill {
-            position: absolute;
-            height: 100%;
-            width: 0%;
-            background: var(--neon-blue);
-            transition: width linear;
-        }
-
-        /* Status Indicators */
-        .tracking-status {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 10px;
-            font-weight: 700;
-        }
-
-        .indicator-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: grey;
-        }
-
-        .indicator-dot.active {
-            background: var(--neon-green);
-            box-shadow: 0 0 10px var(--neon-green);
-        }
-
-        /* Emergency Flash */
-        .emergency-flash {
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(circle, transparent 30%, rgba(255, 0, 0, 0.5) 100%);
-            z-index: 5;
-            display: none;
-            animation: blink 0.4s infinite alternate;
-        }
-
-        @keyframes blink { from { opacity: 0; } to { opacity: 1; } }
-
-        /* Initial Setup Overlay */
-        #splash {
-            position: fixed;
-            inset: 0;
-            z-index: 1000;
-            background: #020408;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-        }
-
-        .btn-init {
-            padding: 18px 50px;
-            background: var(--neon-blue);
-            color: black;
-            font-weight: 900;
-            border: none;
-            border-radius: 4px;
-            letter-spacing: 3px;
-            cursor: pointer;
-            transition: 0.3s;
-        }
-
-        .btn-init:hover {
-            box-shadow: 0 0 30px var(--neon-blue);
-            transform: translateY(-2px);
-        }
-
-        .hidden { display: none !important; }
-
-        /* Crosshair */
-        .target {
-            position: absolute;
-            width: 20px; height: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            left: 50%; top: 50%;
-            transform: translate(-50%, -50%);
-        }
-    </style>
-</head>
-<body>
-    <div id="splash">
-        <h1 style="letter-spacing: 10px; margin-bottom: 10px;">WEBXR VR</h1>
-        <p style="color: grey; font-size: 12px; margin-bottom: 40px;">INDUSTRIAL GESTURE CONTROLLER MK-II</p>
-        <button class="btn-init" onclick="initApp()">ESTABLISH NEURAL LINK</button>
-    </div>
-
-    <!-- Source logic -->
-    <video id="input_video" class="hidden" playsinline autoplay muted></video>
-
-    <!-- Stereo View -->
-    <div class="viewport">
-        <video id="video-L" class="camera-feed" playsinline autoplay muted></video>
-        <div class="emergency-flash" id="flash-L"></div>
-        <div class="target"></div>
-        <div class="hud-overlay">
-            <div class="header">
-                <div class="panel">
-                    <div class="label">Voltage</div>
-                    <div class="value">24.4V</div>
-                </div>
-                <div class="panel">
-                    <div class="tracking-status">
-                        <div id="dot-L" class="indicator-dot"></div>
-                        LINK: <span id="link-L">LOCALIZING</span>
-                    </div>
-                </div>
-            </div>
-            <div class="center-hud">
-                <div id="cmd-L" class="command-box">STANDBY</div>
-                <div class="cooldown-bar"><div id="cool-L" class="cooldown-fill"></div></div>
-            </div>
-            <div class="footer">
-                <div class="panel">
-                    <div class="label">Coord X</div>
-                    <div id="x-L" class="value">0.0</div>
-                </div>
-                <div class="panel">
-                    <div class="label">Coord Y</div>
-                    <div id="y-L" class="value">0.0</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="viewport">
-        <video id="video-R" class="camera-feed" playsinline autoplay muted></video>
-        <div class="emergency-flash" id="flash-R"></div>
-        <div class="target"></div>
-        <div class="hud-overlay">
-            <div class="header">
-                <div class="panel">
-                    <div class="label">Voltage</div>
-                    <div class="value">24.4V</div>
-                </div>
-                <div class="panel">
-                    <div class="tracking-status">
-                        <div id="dot-R" class="indicator-dot"></div>
-                        LINK: <span id="link-R">LOCALIZING</span>
-                    </div>
-                </div>
-            </div>
-            <div class="center-hud">
-                <div id="cmd-R" class="command-box">STANDBY</div>
-                <div class="cooldown-bar"><div id="cool-R" class="cooldown-fill"></div></div>
-            </div>
-            <div class="footer">
-                <div class="panel">
-                    <div class="label">Coord X</div>
-                    <div id="x-R" class="value">0.0</div>
-                </div>
-                <div class="panel">
-                    <div class="label">Coord Y</div>
-                    <div id="y-R" class="value">0.0</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // Utilities: Smoother for jittery landmarks
-        class LatencySmoother {
-            constructor(windowSize = 5) {
-                this.history = [];
-                this.size = windowSize;
-            }
-            smooth(val) {
-                this.history.push(val);
-                if (this.history.length > this.size) this.history.shift();
-                return this.history.reduce((a, b) => a + b, 0) / this.history.length;
-            }
-        }
-
-        const smootherX = new LatencySmoother(5);
-        const smootherY = new LatencySmoother(5);
-
-        // Core State
-        let splash = document.getElementById('splash');
-        let lastCommand = 'NONE';
-        let commandCooldown = false;
-        const COOLDOWN_MS = 1000;
-        let stabilityCounter = 0;
-        const STABILITY_THRESHOLD = 3; // Frames required for a gesture to stick
-        let currentGesture = 'NONE';
-
-        // UI Pointers
+        // HUD Pointers
         const ui = {
             cmd: [document.getElementById('cmd-L'), document.getElementById('cmd-R')],
             cool: [document.getElementById('cool-L'), document.getElementById('cool-R')],
             dots: [document.getElementById('dot-L'), document.getElementById('dot-R')],
-            links: [document.getElementById('link-L'), document.getElementById('link-R')],
             x: [document.getElementById('x-L'), document.getElementById('x-R')],
             y: [document.getElementById('y-L'), document.getElementById('y-R')],
+            z: [document.getElementById('z-L'), document.getElementById('z-R')],
+            pinch: [document.getElementById('pinch-L'), document.getElementById('pinch-R')],
             flashes: [document.getElementById('flash-L'), document.getElementById('flash-R')]
         };
+
+        let lastDispCommand = 'NONE';
+        let commandCooldown = false;
+        const COOLDOWN_MS = 1000;
+
+        // Initialize Recognizer
+        async function createGestureRecognizer() {
+            statusText.textContent = "Loading AI Core...";
+            const vision = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+            );
+            gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+                    delegate: "GPU"
+                },
+                runningMode: "VIDEO",
+                numHands: 2
+            });
+            statusText.textContent = "Neural Link Ready";
+            btnStart.classList.remove('hidden');
+        }
+
+        async function initApp() {
+            splash.classList.add('fade-out');
+            setTimeout(() => splash.style.display = 'none', 500);
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: 640, height: 480 }
+                });
+                
+                videoElement.srcObject = stream;
+                document.getElementById('video-L').srcObject = stream;
+                document.getElementById('video-R').srcObject = stream;
+                
+                await videoElement.play();
+                requestAnimationFrame(predictLoop);
+
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen();
+                }
+            } catch (err) {
+                alert("Camera Access Denied: " + err.message);
+            }
+        }
 
         function dispatchCommand(cmd) {
             if (commandCooldown || cmd === 'NONE') return;
 
-            // Trigger cooldown
             commandCooldown = true;
             ui.cool.forEach(c => {
                 c.style.transition = 'none';
@@ -355,125 +97,273 @@
 
             setTimeout(() => { commandCooldown = false; }, COOLDOWN_MS);
 
-            // Update UI
             ui.cmd.forEach(c => {
                 c.textContent = cmd;
                 c.classList.add('active');
             });
             
             ui.flashes.forEach(f => f.style.display = cmd === 'STOP' ? 'block' : 'none');
-
-            // Send to parent
-            console.log(`[NeuralLink] Triggering: ${cmd}`);
-            window.parent.postMessage({ type: 'ROBOT_COMMAND', command: cmd }, '*');
-
-            // Clear visual notification after 700ms
-            setTimeout(() => {
-                ui.cmd.forEach(c => c.classList.remove('active'));
-            }, 700);
-        }
-
-        function onResults(results) {
-            const hasHands = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
             
-            ui.dots.forEach(d => d.classList.toggle('active', hasHands));
-            ui.links.forEach(l => l.textContent = hasHands ? 'LOCKED' : 'LOCALIZING');
-
-            if (hasHands) {
-                const rawLandmarks = results.multiHandLandmarks[0];
-                
-                // Smoothing
-                const sx = smootherX.smooth(rawLandmarks[8].x);
-                const sy = smootherY.smooth(rawLandmarks[8].y);
-
-                ui.x.forEach(v => v.textContent = sx.toFixed(2));
-                ui.y.forEach(v => v.textContent = sy.toFixed(2));
-
-                // Pose Analysis
-                const indexUp = rawLandmarks[8].y < rawLandmarks[6].y;
-                const middleUp = rawLandmarks[12].y < rawLandmarks[10].y;
-                const ringUp = rawLandmarks[16].y < rawLandmarks[14].y;
-                const pinkyUp = rawLandmarks[20].y < rawLandmarks[18].y;
-                const thumbUp = rawLandmarks[4].y < rawLandmarks[2].y;
-
-                const count = [indexUp, middleUp, ringUp, pinkyUp].filter(x => x).length;
-
-                let detected = 'NONE';
-
-                if (count >= 3) {
-                    detected = 'STOP';
-                } else if (count === 0) {
-                    detected = 'PICK';
-                } else if (count === 1 && indexUp) {
-                    // Orientation mapping
-                    if (sy < 0.3) detected = 'UP';
-                    else if (sy > 0.7) detected = 'DOWN';
-                    else if (sx < 0.3) detected = 'LEFT';
-                    else if (sx > 0.7) detected = 'RIGHT';
-                    else detected = 'MOVE';
-                } else if (count === 2 && indexUp && middleUp) {
-                    detected = 'RETURN';
-                }
-
-                // Stability Logic
-                if (detected === currentGesture) {
-                    stabilityCounter++;
-                } else {
-                    currentGesture = detected;
-                    stabilityCounter = 0;
-                }
-
-                if (stabilityCounter >= STABILITY_THRESHOLD) {
-                    dispatchCommand(detected);
-                }
-
-            } else {
-                currentGesture = 'NONE';
-                stabilityCounter = 0;
-            }
+            window.parent.postMessage({ type: 'AMR_CMD', command: cmd }, '*');
+            setTimeout(() => ui.cmd.forEach(c => c.classList.remove('active')), 700);
         }
 
-        async function initApp() {
-            splash.style.display = 'none';
+        async function predictLoop() {
+            if (videoElement.currentTime !== lastVideoTime) {
+                lastVideoTime = videoElement.currentTime;
+                const results = await gestureRecognizer.recognizeForVideo(videoElement, performance.now());
 
-            const hands = new Hands({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-            });
+                const hasHands = results.landmarks && results.landmarks.length > 0;
+                ui.dots.forEach(d => d.classList.toggle('active', hasHands));
 
-            hands.setOptions({
-                maxNumHands: 1,
-                modelComplexity: 1,
-                minDetectionConfidence: 0.7,
-                minTrackingConfidence: 0.7
-            });
+                if (hasHands) {
+                    const landmarks = results.landmarks[0];
+                    const gesture = results.gestures && results.gestures[0] && results.gestures[0][0] ? results.gestures[0][0].categoryName : "None";
+                    
+                    // Coordinates & Depth
+                    const x = landmarks[8].x;
+                    const y = landmarks[8].y;
+                    const z = landmarks[8].z; // Depth estimation
 
-            hands.onResults(onResults);
+                    ui.x.forEach(v => v.textContent = x.toFixed(2));
+                    ui.y.forEach(v => v.textContent = y.toFixed(2));
+                    ui.z.forEach(v => v.textContent = (z * -100).toFixed(1));
 
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: 640, height: 480 }
-                });
+                    // Pinch Detection (Landmark 4 vs 8)
+                    const dist4_8 = Math.sqrt(
+                        Math.pow(landmarks[4].x - landmarks[8].x, 2) +
+                        Math.pow(landmarks[4].y - landmarks[8].y, 2)
+                    );
+                    const isPinching = dist4_8 < 0.05;
+                    ui.pinch.forEach(p => p.classList.toggle('active', isPinching));
 
-                document.getElementById('input_video').srcObject = stream;
-                document.getElementById('video-L').srcObject = stream;
-                document.getElementById('video-R').srcObject = stream;
+                    let cmd = 'NONE';
 
-                const camera = new Camera(document.getElementById('input_video'), {
-                    onFrame: async () => {
-                        await hands.send({image: document.getElementById('input_video')});
-                    },
-                    width: 640,
-                    height: 480
-                });
-                camera.start();
+                    // Mapping Logic
+                    if (gesture === 'Open_Palm') cmd = 'STOP';
+                    else if (gesture === 'Closed_Fist') cmd = 'PICK';
+                    else if (gesture === 'Victory') cmd = 'RETURN';
+                    else if (isPinching) cmd = 'DROP';
+                    else if (gesture === 'Pointing_Up') {
+                        if (y < 0.25) cmd = 'UP';
+                        else if (y > 0.75) cmd = 'DOWN';
+                        else if (x < 0.25) cmd = 'LEFT';
+                        else if (x > 0.75) cmd = 'RIGHT';
+                        else cmd = 'MOVE';
+                    }
 
-                if (document.documentElement.requestFullscreen) {
-                    document.documentElement.requestFullscreen();
+                    if (cmd !== 'NONE') dispatchCommand(cmd);
                 }
-            } catch (err) {
-                alert("Camera initialization failed: " + err.message);
             }
+            requestAnimationFrame(predictLoop);
         }
+
+        // External Link to button
+        window.initApp = initApp;
+        createGestureRecognizer();
     </script>
+    
+    <style>
+        :root {
+            --neon-blue: #00f2ff;
+            --neon-green: #0bffa3;
+            --neon-red: #ff3c3c;
+            --neon-orange: #ff983c;
+            --glass: rgba(5, 10, 20, 0.92);
+            --font: 'JetBrains Mono', 'Inter', monospace;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            background: #000;
+            overflow: hidden;
+            display: flex;
+            font-family: var(--font);
+            color: white;
+        }
+
+        .viewport {
+            width: 50%; height: 100%;
+            position: relative;
+            overflow: hidden;
+            border-right: 1px solid #111;
+        }
+
+        .camera-feed {
+            position: absolute;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            transform: scale(1.15);
+        }
+
+        /* HUD Overlay */
+        .hud {
+            position: absolute;
+            inset: 0;
+            z-index: 10;
+            pointer-events: none;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .panel {
+            background: var(--glass);
+            border-left: 3px solid var(--neon-blue);
+            backdrop-filter: blur(15px);
+            padding: 10px 15px;
+            border-radius: 4px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+        }
+
+        .label { font-size: 8px; font-weight: 800; color: var(--neon-blue); opacity: 0.8; margin-bottom: 2px; }
+        .value { font-size: 14px; font-weight: 900; }
+
+        .header, .footer { display: flex; justify-content: space-between; align-items: flex-start; }
+        .footer { align-items: flex-end; }
+
+        .center {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .cmd-display {
+            font-size: 28px;
+            font-weight: 950;
+            color: var(--neon-blue);
+            text-transform: uppercase;
+            letter-spacing: 6px;
+            padding: 10px 30px;
+            background: rgba(0, 242, 255, 0.05);
+            border: 1px solid rgba(0, 242, 255, 0.2);
+            border-radius: 100px;
+            opacity: 0;
+            transform: scale(0.8);
+            transition: 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+        }
+
+        .cmd-display.active { opacity: 1; transform: scale(1); }
+
+        .cooldown {
+            width: 140px; height: 1px;
+            background: rgba(255,255,255,0.1);
+            margin: 15px auto 0;
+            position: relative;
+        }
+        .cooldown-fill { position: absolute; height: 100%; width: 0; background: var(--neon-blue); }
+
+        .pinch-indicator {
+            width: 50px; height: 50px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            margin-bottom: 20px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px;
+            transition: 0.2s;
+        }
+        .pinch-indicator.active {
+            border-color: var(--neon-orange);
+            color: var(--neon-orange);
+            box-shadow: 0 0 20px rgba(255, 152, 60, 0.4);
+            transform: scale(1.1);
+        }
+
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #333; transition: 0.3s; }
+        .dot.active { background: var(--neon-green); box-shadow: 0 0 10px var(--neon-green); }
+
+        .flash { position: absolute; inset: 0; background: radial-gradient(circle, transparent, rgba(255,0,0,0.4)); display: none; z-index: 5; animation: blk 0.3s infinite alternate; }
+        @keyframes blk { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Splash Screen */
+        #splash {
+            position: fixed; inset: 0; z-index: 1000;
+            background: #030610;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: 0.5s;
+        }
+        #splash.fade-out { opacity: 0; pointer-events: none; }
+
+        .btn {
+            background: var(--neon-blue);
+            border: none; padding: 15px 40px; font-weight: 900; letter-spacing: 2px;
+            border-radius: 4px; cursor: pointer; color: black;
+        }
+
+        .lens { position: absolute; inset: 0; background: radial-gradient(circle, transparent 30%, rgba(0,0,0,0.85) 85%); z-index: 20; }
+        .target { position: absolute; width:10px; height: 10px; border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div id="splash">
+        <div style="font-size: 40px; margin-bottom: 20px;">👁️</div>
+        <h1 style="letter-spacing: 12px; font-size: 20px; color: var(--neon-blue);">NEURAL LINK V3</h1>
+        <p id="init-status" style="color: #444; font-size: 10px; margin-bottom: 30px;">BOOTING AI MODULE...</p>
+        <button id="btn-start" class="btn hidden" onclick="initApp()">ESTABLISH CONNECTION</button>
+    </div>
+
+    <video id="input_video" class="hidden" playsinline autoplay muted></video>
+
+    <!-- Stereo View -->
+    <div class="viewport">
+        <video id="video-L" class="camera-feed" playsinline autoplay muted></video>
+        <div class="flash" id="flash-L"></div>
+        <div class="target"></div>
+        <div class="hud">
+            <div class="header">
+                <div class="panel">
+                    <div class="label">Status</div>
+                    <div class="dot" id="dot-L"></div>
+                </div>
+                <div class="panel">
+                    <div class="label">Depth</div>
+                    <div class="value" id="z-L">0.0</div>
+                </div>
+            </div>
+            <div class="center">
+                <div class="pinch-indicator" id="pinch-L">🤏</div>
+                <div class="cmd-display" id="cmd-L">STANDBY</div>
+                <div class="cooldown"><div class="cooldown-fill" id="cool-L"></div></div>
+            </div>
+            <div class="footer">
+                <div class="panel"><div class="label">Lat</div><div class="value" id="x-L">0.0</div></div>
+                <div class="panel"><div class="label">Lng</div><div class="value" id="y-L">0.0</div></div>
+            </div>
+        </div>
+        <div class="lens"></div>
+    </div>
+
+    <div class="viewport">
+        <video id="video-R" class="camera-feed" playsinline autoplay muted></video>
+        <div class="flash" id="flash-R"></div>
+        <div class="target"></div>
+        <div class="hud">
+            <div class="header">
+                <div class="panel">
+                    <div class="label">Status</div>
+                    <div class="dot" id="dot-R"></div>
+                </div>
+                <div class="panel">
+                    <div class="label">Depth</div>
+                    <div class="value" id="z-R">0.0</div>
+                </div>
+            </div>
+            <div class="center">
+                <div class="pinch-indicator" id="pinch-R">🤏</div>
+                <div class="cmd-display" id="cmd-R">STANDBY</div>
+                <div class="cooldown"><div class="cooldown-fill" id="cool-R"></div></div>
+            </div>
+            <div class="footer">
+                <div class="panel"><div class="label">Lat</div><div class="value" id="x-R">0.0</div></div>
+                <div class="panel"><div class="label">Lng</div><div class="value" id="y-R">0.0</div></div>
+            </div>
+        </div>
+        <div class="lens"></div>
+    </div>
 </body>
 </html>
