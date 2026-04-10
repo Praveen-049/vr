@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Cardboard Camera Passthrough</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            overflow: hidden;
+            display: flex;
+            /* Creates the split screen */
+        }
+
+        #ui {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            background: rgba(10, 15, 30, 0.95);
+            color: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            font-family: system-ui, -apple-system, sans-serif;
+            border: 2px solid #00d4ff;
+            box-shadow: 0 0 40px rgba(0, 212, 255, 0.3);
+            width: 80%;
+            max-width: 400px;
+        }
+
+        button {
+            padding: 16px 32px;
+            font-size: 18px;
+            border: none;
+            background: #00d4ff;
+            color: #000;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        /* The Cardboard Split Screen Layout */
+        .eye {
+            width: 50%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+            border-right: 2px solid #111;
+            /* subtle divider */
+            box-sizing: border-box;
+        }
+
+        /* Two video elements pointing to the same camera stream */
+        video {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            /* Ensures video fills the eye completely and matches focal magnification */
+            transform: translate(-50%, -50%) scale(1.15);
+        }
+
+        /* Simulates the 25-37mm Biconvex Lenses & helps guide the 66mm IPD */
+        .lens-mask {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 120%;
+            height: 120%;
+            transform: translate(-50%, -50%);
+            /* Creates a circular vignette fading to black at the edges */
+            background: radial-gradient(circle at center, transparent 35%, rgba(0,0,0,0.85) 65%, black 80%);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #fullscreen-btn {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 500;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            border: 1px solid white;
+            cursor: pointer;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- User Interface -->
+    <div id="ui">
+        <h2 style="margin-top:0;">📱 Cardboard AR</h2>
+        <p style="color: #aaa;">Shows your phone's rear camera mapped perfectly for Cardboard VR.</p>
+        <button id="start-btn">ENABLE CAMERA</button>
+    </div>
+
+    <!-- Left Eye View -->
+    <div class="eye">
+        <video id="video-left" autoplay playsinline webkit-playsinline muted></video>
+        <div class="lens-mask"></div>
+    </div>
+
+    <!-- Right Eye View -->
+    <div class="eye">
+        <video id="video-right" autoplay playsinline webkit-playsinline muted></video>
+        <div class="lens-mask"></div>
+    </div>
+
+    <button id="fullscreen-btn">Toggle Fullscreen</button>
+
+    <script>
+        const startBtn = document.getElementById('start-btn');
+        const ui = document.getElementById('ui');
+        const videoLeft = document.getElementById('video-left');
+        const videoRight = document.getElementById('video-right');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+        const playVideo = (stream) => {
+            // Feed stream to BOTH eyes
+            videoLeft.srcObject = stream;
+            videoRight.srcObject = stream;
+
+            ui.style.display = 'none';
+            fullscreenBtn.style.display = 'block';
+
+            // Try to force fullscreen automatically for better VR immersion
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen().catch(e => console.log("Fullscreen blocked on load", e));
+            }
+        };
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                // Request physical rear camera
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { exact: "environment" } },
+                    audio: false
+                });
+                playVideo(stream);
+            } catch (err) {
+                // Fallback 1: Try without 'exact'
+                try {
+                    const fallbackStream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: "environment" },
+                        audio: false
+                    });
+                    playVideo(fallbackStream);
+                } catch (fallbackErr) {
+                    // Fallback 2: Any camera available (Desktop PCs)
+                    try {
+                        const anyStream = await navigator.mediaDevices.getUserMedia({
+                            video: true,
+                            audio: false
+                        });
+                        playVideo(anyStream);
+                    } catch (finalErr) {
+                        alert('Camera access denied! Make sure you are using https.\nError: ' + finalErr.message);
+                    }
+                }
+            }
+        });
+
+        // Allow user to manually toggle fullscreen if auto-fullscreen blocked
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log("Error attempting to enable full-screen mode:", err.message);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
