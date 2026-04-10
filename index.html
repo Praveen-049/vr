@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>AMR VR Spatial Controller</title>
+    <title>WebXR Industrial AMR Controller</title>
     <!-- MediaPipe Hands -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -14,8 +14,9 @@
             --neon-green: #00ff88;
             --neon-red: #ff3131;
             --neon-yellow: #f8ff00;
-            --glass-bg: rgba(10, 15, 30, 0.85);
-            --industrial-font: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            --glass-bg: rgba(7, 10, 20, 0.9);
+            --industrial-font: 'Inter', system-ui, -apple-system, sans-serif;
+            --panel-border: 1px solid rgba(0, 242, 255, 0.2);
         }
 
         body, html {
@@ -25,19 +26,18 @@
             overflow: hidden;
             display: flex;
             font-family: var(--industrial-font);
+            color: white;
+            user-select: none;
         }
 
-        /* Cardboard Split Screen */
+        /* Cardboard Split Screen Viewports */
         .viewport {
             width: 50%;
             height: 100%;
             position: relative;
             overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-right: 1px solid #111;
             box-sizing: border-box;
+            border-right: 1px solid #111;
         }
 
         .camera-feed {
@@ -45,421 +45,406 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transform: scale(1.1); /* Slight zoom for VR lens correction */
+            transform: scale(1.1); /* VR Lens correction factor */
         }
 
-        /* HUD Overlay */
+        /* HUD Overlay Layer */
         .hud-overlay {
             position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
+            inset: 0;
             z-index: 10;
             pointer-events: none;
+            padding: 40px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            padding: 40px;
-            box-sizing: border-box;
         }
 
-        .hud-top {
+        /* Glassmorphism Panels */
+        .panel {
+            background: var(--glass-bg);
+            border: var(--panel-border);
+            backdrop-filter: blur(12px);
+            padding: 10px 18px;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+        }
+
+        .header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
         }
 
-        .hud-center {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            flex-grow: 1;
-        }
-
-        .hud-bottom {
+        .footer {
             display: flex;
             justify-content: space-between;
             align-items: flex-end;
         }
 
-        /* HUD Components */
-        .panel {
-            background: var(--glass-bg);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            padding: 12px 20px;
-            border-radius: 12px;
-            color: #fff;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-        }
-
         .label {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 2px;
             color: var(--neon-blue);
-            margin-bottom: 4px;
+            margin-bottom: 2px;
         }
 
         .value {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 900;
-            font-family: monospace;
+            font-family: 'JetBrains Mono', monospace;
         }
 
-        .command-badge {
-            font-size: 24px;
-            font-weight: 900;
-            padding: 20px 40px;
-            border-radius: 50px;
-            background: rgba(0, 242, 255, 0.2);
-            border: 2px solid var(--neon-blue);
-            color: var(--neon-blue);
-            text-transform: uppercase;
-            letter-spacing: 4px;
-            box-shadow: 0 0 30px rgba(0, 242, 255, 0.4);
-            transform: scale(0.9);
-            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            opacity: 0;
-        }
-
-        .command-badge.active {
-            opacity: 1;
-            transform: scale(1);
-        }
-
-        .gesture-indicator {
-            width: 80px;
-            height: 80px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 40px;
-        }
-
-        /* Emergency State */
-        .emergency-overlay {
+        /* Center Command Feedback */
+        .center-hud {
             position: absolute;
-            inset: 0;
-            background: radial-gradient(circle, transparent 40%, rgba(255, 0, 0, 0.4) 100%);
-            z-index: 5;
-            display: none;
-            pointer-events: none;
-            animation: pulse-red 0.5s infinite alternate;
-        }
-
-        @keyframes pulse-red {
-            from { opacity: 0.3; }
-            to { opacity: 1; }
-        }
-
-        /* Lens Mask */
-        .lens-mask {
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(circle, transparent 30%, rgba(0, 0, 0, 0.8) 70%, #000 85%);
-            z-index: 20;
-            pointer-events: none;
-        }
-
-        /* Initial UI */
-        #splash {
-            position: fixed;
-            inset: 0;
-            z-index: 1000;
-            background: #050a10;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            color: white;
             text-align: center;
         }
 
-        #splash h1 {
-            font-size: 32px;
-            letter-spacing: 8px;
-            margin-bottom: 30px;
-            background: linear-gradient(to right, var(--neon-blue), var(--neon-green));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        .command-box {
+            font-size: 26px;
+            font-weight: 950;
+            padding: 16px 40px;
+            border-radius: 4px;
+            background: rgba(0, 242, 255, 0.1);
+            border-left: 4px solid var(--neon-blue);
+            letter-spacing: 5px;
+            text-transform: uppercase;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s cubic-bezier(0.19, 1, 0.22, 1);
         }
 
-        .btn-start {
-            padding: 20px 60px;
-            font-size: 18px;
-            border: none;
-            background: var(--neon-blue);
-            color: #000;
-            font-weight: 900;
-            border-radius: 12px;
-            cursor: pointer;
-            letter-spacing: 4px;
-            transition: all 0.3s;
+        .command-box.active {
+            opacity: 1;
+            transform: translateY(0);
         }
 
-        .btn-start:hover {
-            transform: scale(1.05);
-            box-shadow: 0 0 40px var(--neon-blue);
+        /* Cooldown Progress Bar */
+        .cooldown-bar {
+            width: 120px;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            margin-top: 10px;
+            position: relative;
+            overflow: hidden;
         }
 
-        /* Crosshair */
-        .crosshair {
+        .cooldown-fill {
             position: absolute;
-            width: 40px;
-            height: 40px;
-            border: 1px solid rgba(0, 242, 255, 0.3);
+            height: 100%;
+            width: 0%;
+            background: var(--neon-blue);
+            transition: width linear;
+        }
+
+        /* Status Indicators */
+        .tracking-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 10px;
+            font-weight: 700;
+        }
+
+        .indicator-dot {
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
+            background: grey;
+        }
+
+        .indicator-dot.active {
+            background: var(--neon-green);
+            box-shadow: 0 0 10px var(--neon-green);
+        }
+
+        /* Emergency Flash */
+        .emergency-flash {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle, transparent 30%, rgba(255, 0, 0, 0.5) 100%);
+            z-index: 5;
+            display: none;
+            animation: blink 0.4s infinite alternate;
+        }
+
+        @keyframes blink { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Initial Setup Overlay */
+        #splash {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            background: #020408;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .btn-init {
+            padding: 18px 50px;
+            background: var(--neon-blue);
+            color: black;
+            font-weight: 900;
+            border: none;
+            border-radius: 4px;
+            letter-spacing: 3px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .btn-init:hover {
+            box-shadow: 0 0 30px var(--neon-blue);
+            transform: translateY(-2px);
         }
 
         .hidden { display: none !important; }
+
+        /* Crosshair */
+        .target {
+            position: absolute;
+            width: 20px; height: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            left: 50%; top: 50%;
+            transform: translate(-50%, -50%);
+        }
     </style>
 </head>
 <body>
     <div id="splash">
-        <h1>AMR SPATIAL CONTROL</h1>
-        <p style="color: #666; max-width: 300px; margin-bottom: 40px;">Industrial Mobile VR interface with hand gesture recognition.</p>
-        <button class="btn-start" onclick="initApp()">INITIALIZE SYSTEM</button>
-        <p style="font-size: 10px; color: #444; margin-top: 20px;">REQUIRES CAMERA & GYRO ACCESS</p>
+        <h1 style="letter-spacing: 10px; margin-bottom: 10px;">WEBXR VR</h1>
+        <p style="color: grey; font-size: 12px; margin-bottom: 40px;">INDUSTRIAL GESTURE CONTROLLER MK-II</p>
+        <button class="btn-init" onclick="initApp()">ESTABLISH NEURAL LINK</button>
     </div>
 
-    <!-- Hidden shared video source -->
+    <!-- Source logic -->
     <video id="input_video" class="hidden" playsinline autoplay muted></video>
 
-    <!-- Left Eye -->
+    <!-- Stereo View -->
     <div class="viewport">
         <video id="video-L" class="camera-feed" playsinline autoplay muted></video>
-        <div class="emergency-overlay" id="emergency-L"></div>
+        <div class="emergency-flash" id="flash-L"></div>
+        <div class="target"></div>
         <div class="hud-overlay">
-            <div class="hud-top">
+            <div class="header">
                 <div class="panel">
-                    <div class="label">Battery</div>
-                    <div class="value" id="bat-val-L">87%</div>
+                    <div class="label">Voltage</div>
+                    <div class="value">24.4V</div>
                 </div>
                 <div class="panel">
-                    <div class="label">Signal</div>
-                    <div class="value" style="color:var(--neon-green)">94ms</div>
+                    <div class="tracking-status">
+                        <div id="dot-L" class="indicator-dot"></div>
+                        LINK: <span id="link-L">LOCALIZING</span>
+                    </div>
                 </div>
             </div>
-            <div class="hud-center">
-                <div class="gesture-indicator" id="gist-icon-L">—</div>
-                <div class="command-badge" id="cmd-badge-L">READY</div>
+            <div class="center-hud">
+                <div id="cmd-L" class="command-box">STANDBY</div>
+                <div class="cooldown-bar"><div id="cool-L" class="cooldown-fill"></div></div>
             </div>
-            <div class="hud-bottom">
+            <div class="footer">
                 <div class="panel">
-                    <div class="label">X - Coord</div>
-                    <div class="value" id="x-val-L">0.00</div>
+                    <div class="label">Coord X</div>
+                    <div id="x-L" class="value">0.0</div>
                 </div>
                 <div class="panel">
-                    <div class="label">Y - Coord</div>
-                    <div class="value" id="y-val-L">0.00</div>
+                    <div class="label">Coord Y</div>
+                    <div id="y-L" class="value">0.0</div>
                 </div>
             </div>
         </div>
-        <div class="lens-mask"></div>
-        <div class="crosshair"></div>
     </div>
 
-    <!-- Right Eye -->
     <div class="viewport">
         <video id="video-R" class="camera-feed" playsinline autoplay muted></video>
-        <div class="emergency-overlay" id="emergency-R"></div>
+        <div class="emergency-flash" id="flash-R"></div>
+        <div class="target"></div>
         <div class="hud-overlay">
-            <div class="hud-top">
+            <div class="header">
                 <div class="panel">
-                    <div class="label">Battery</div>
-                    <div class="value" id="bat-val-R">87%</div>
+                    <div class="label">Voltage</div>
+                    <div class="value">24.4V</div>
                 </div>
                 <div class="panel">
-                    <div class="label">Signal</div>
-                    <div class="value" style="color:var(--neon-green)">94ms</div>
+                    <div class="tracking-status">
+                        <div id="dot-R" class="indicator-dot"></div>
+                        LINK: <span id="link-R">LOCALIZING</span>
+                    </div>
                 </div>
             </div>
-            <div class="hud-center">
-                <div class="gesture-indicator" id="gist-icon-R">—</div>
-                <div class="command-badge" id="cmd-badge-R">READY</div>
+            <div class="center-hud">
+                <div id="cmd-R" class="command-box">STANDBY</div>
+                <div class="cooldown-bar"><div id="cool-R" class="cooldown-fill"></div></div>
             </div>
-            <div class="hud-bottom">
+            <div class="footer">
                 <div class="panel">
-                    <div class="label">X - Coord</div>
-                    <div class="value" id="x-val-R">0.00</div>
+                    <div class="label">Coord X</div>
+                    <div id="x-R" class="value">0.0</div>
                 </div>
                 <div class="panel">
-                    <div class="label">Y - Coord</div>
-                    <div class="value" id="y-val-R">0.00</div>
+                    <div class="label">Coord Y</div>
+                    <div id="y-R" class="value">0.0</div>
                 </div>
             </div>
         </div>
-        <div class="lens-mask"></div>
-        <div class="crosshair"></div>
     </div>
 
     <script>
-        const videoElement = document.getElementById('input_video');
-        const videoL = document.getElementById('video-L');
-        const videoR = document.getElementById('video-R');
-        const splash = document.getElementById('splash');
-
-        // UI elements pointers
-        const cmdBadges = [document.getElementById('cmd-badge-L'), document.getElementById('cmd-badge-R')];
-        const gistIcons = [document.getElementById('gist-icon-L'), document.getElementById('gist-icon-R')];
-        const emergencyOverlays = [document.getElementById('emergency-L'), document.getElementById('emergency-R')];
-        const xValues = [document.getElementById('x-val-L'), document.getElementById('x-val-R')];
-        const yValues = [document.getElementById('y-val-L'), document.getElementById('y-val-R')];
-
-        let hands;
-        let camera;
-        let lastGesture = 'NONE';
-        let gestureHistory = [];
-        const MAX_HISTORY = 30;
-
-        const GESTURE_MAP = {
-            'MOVE': { icon: '🚀', color: 'var(--neon-blue)' },
-            'LEFT': { icon: '⬅️', color: 'var(--neon-blue)' },
-            'RIGHT': { icon: '➡️', color: 'var(--neon-blue)' },
-            'MOVE_UP': { icon: '⬆️', color: 'var(--neon-blue)' },
-            'MOVE_DOWN': { icon: '⬇️', color: 'var(--neon-blue)' },
-            'STOP': { icon: '🛑', color: 'var(--neon-yellow)' },
-            'PICK': { icon: '📦', color: 'var(--neon-green)' },
-            'FAST': { icon: '⚡', color: 'var(--neon-green)' },
-            'SLOW': { icon: '🐌', color: 'var(--neon-yellow)' },
-            'RETURN_HOME': { icon: '🏠', color: 'var(--neon-blue)' },
-            'EMERGENCY_STOP': { icon: '⚠️', color: 'var(--neon-red)' }
-        };
-
-        function updateHUD(cmd) {
-            if (cmd === lastGesture) return;
-            lastGesture = cmd;
-
-            const config = GESTURE_MAP[cmd] || { icon: '—', color: 'var(--neon-blue)' };
-
-            cmdBadges.forEach(b => {
-                b.textContent = cmd;
-                b.style.borderColor = config.color;
-                b.style.color = config.color;
-                b.classList.toggle('active', cmd !== 'NONE');
-            });
-
-            gistIcons.forEach(i => {
-                i.textContent = config.icon;
-            });
-
-            const isEmergency = cmd === 'EMERGENCY_STOP';
-            emergencyOverlays.forEach(o => {
-                o.style.display = isEmergency ? 'block' : 'none';
-            });
-
-            if (cmd !== 'NONE') {
-                console.log(`Command Dispatched: ${cmd}`);
-                // Here we would call window.parent.postMessage({ type: 'AMR_CMD', cmd }, '*');
+        // Utilities: Smoother for jittery landmarks
+        class LatencySmoother {
+            constructor(windowSize = 5) {
+                this.history = [];
+                this.size = windowSize;
+            }
+            smooth(val) {
+                this.history.push(val);
+                if (this.history.length > this.size) this.history.shift();
+                return this.history.reduce((a, b) => a + b, 0) / this.history.length;
             }
         }
 
+        const smootherX = new LatencySmoother(5);
+        const smootherY = new LatencySmoother(5);
+
+        // Core State
+        let splash = document.getElementById('splash');
+        let lastCommand = 'NONE';
+        let commandCooldown = false;
+        const COOLDOWN_MS = 1000;
+        let stabilityCounter = 0;
+        const STABILITY_THRESHOLD = 3; // Frames required for a gesture to stick
+        let currentGesture = 'NONE';
+
+        // UI Pointers
+        const ui = {
+            cmd: [document.getElementById('cmd-L'), document.getElementById('cmd-R')],
+            cool: [document.getElementById('cool-L'), document.getElementById('cool-R')],
+            dots: [document.getElementById('dot-L'), document.getElementById('dot-R')],
+            links: [document.getElementById('link-L'), document.getElementById('link-R')],
+            x: [document.getElementById('x-L'), document.getElementById('x-R')],
+            y: [document.getElementById('y-L'), document.getElementById('y-R')],
+            flashes: [document.getElementById('flash-L'), document.getElementById('flash-R')]
+        };
+
+        function dispatchCommand(cmd) {
+            if (commandCooldown || cmd === 'NONE') return;
+
+            // Trigger cooldown
+            commandCooldown = true;
+            ui.cool.forEach(c => {
+                c.style.transition = 'none';
+                c.style.width = '100%';
+                setTimeout(() => {
+                    c.style.transition = `width ${COOLDOWN_MS}ms linear`;
+                    c.style.width = '0%';
+                }, 10);
+            });
+
+            setTimeout(() => { commandCooldown = false; }, COOLDOWN_MS);
+
+            // Update UI
+            ui.cmd.forEach(c => {
+                c.textContent = cmd;
+                c.classList.add('active');
+            });
+            
+            ui.flashes.forEach(f => f.style.display = cmd === 'STOP' ? 'block' : 'none');
+
+            // Send to parent
+            console.log(`[NeuralLink] Triggering: ${cmd}`);
+            window.parent.postMessage({ type: 'ROBOT_COMMAND', command: cmd }, '*');
+
+            // Clear visual notification after 700ms
+            setTimeout(() => {
+                ui.cmd.forEach(c => c.classList.remove('active'));
+            }, 700);
+        }
+
         function onResults(results) {
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const landmarks = results.multiHandLandmarks[0];
+            const hasHands = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
+            
+            ui.dots.forEach(d => d.classList.toggle('active', hasHands));
+            ui.links.forEach(l => l.textContent = hasHands ? 'LOCKED' : 'LOCALIZING');
+
+            if (hasHands) {
+                const rawLandmarks = results.multiHandLandmarks[0];
                 
-                // Track positions
-                const x = landmarks[8].x;
-                const y = landmarks[8].y;
-                gestureHistory.push({ x, y, timestamp: Date.now() });
-                if (gestureHistory.length > MAX_HISTORY) gestureHistory.shift();
+                // Smoothing
+                const sx = smootherX.smooth(rawLandmarks[8].x);
+                const sy = smootherY.smooth(rawLandmarks[8].y);
 
-                xValues.forEach(v => v.textContent = x.toFixed(2));
-                yValues.forEach(v => v.textContent = y.toFixed(2));
+                ui.x.forEach(v => v.textContent = sx.toFixed(2));
+                ui.y.forEach(v => v.textContent = sy.toFixed(2));
 
-                // Basic Pose Detection
-                const isIndexUp = landmarks[8].y < landmarks[6].y;
-                const isMiddleUp = landmarks[12].y < landmarks[10].y;
-                const isRingUp = landmarks[16].y < landmarks[14].y;
-                const isPinkyUp = landmarks[20].y < landmarks[18].y;
-                const isThumbClose = Math.abs(landmarks[4].x - landmarks[13].x) < 0.1;
+                // Pose Analysis
+                const indexUp = rawLandmarks[8].y < rawLandmarks[6].y;
+                const middleUp = rawLandmarks[12].y < rawLandmarks[10].y;
+                const ringUp = rawLandmarks[16].y < rawLandmarks[14].y;
+                const pinkyUp = rawLandmarks[20].y < rawLandmarks[18].y;
+                const thumbUp = rawLandmarks[4].y < rawLandmarks[2].y;
 
-                const extendedCount = [isIndexUp, isMiddleUp, isRingUp, isPinkyUp].filter(v => v).length;
+                const count = [indexUp, middleUp, ringUp, pinkyUp].filter(x => x).length;
 
-                // 1. STOP - Open Palm
-                if (extendedCount >= 3) {
-                    // Check if hand is raised high for EMERGENCY_STOP
-                    if (landmarks[0].y < 0.4) {
-                        updateHUD('EMERGENCY_STOP');
-                    } else {
-                        updateHUD('STOP');
-                    }
-                    return;
+                let detected = 'NONE';
+
+                if (count >= 3) {
+                    detected = 'STOP';
+                } else if (count === 0) {
+                    detected = 'PICK';
+                } else if (count === 1 && indexUp) {
+                    // Orientation mapping
+                    if (sy < 0.3) detected = 'UP';
+                    else if (sy > 0.7) detected = 'DOWN';
+                    else if (sx < 0.3) detected = 'LEFT';
+                    else if (sx > 0.7) detected = 'RIGHT';
+                    else detected = 'MOVE';
+                } else if (count === 2 && indexUp && middleUp) {
+                    detected = 'RETURN';
                 }
 
-                // 2. PICK - Fist
-                if (extendedCount === 0) {
-                    updateHUD('PICK');
-                    return;
+                // Stability Logic
+                if (detected === currentGesture) {
+                    stabilityCounter++;
+                } else {
+                    currentGesture = detected;
+                    stabilityCounter = 0;
                 }
 
-                // 3. FAST / SLOW - Two Finger Logic
-                if (extendedCount === 2 && isIndexUp && isMiddleUp) {
-                    if (y < 0.3) updateHUD('FAST');
-                    else if (y > 0.7) updateHUD('SLOW');
-                    else updateHUD('MOVE');
-                    return;
-                }
-
-                // 4. Directional - Single Finger (Index)
-                if (extendedCount === 1 && isIndexUp) {
-                    // Positional mapping
-                    if (y < 0.2) updateHUD('MOVE_UP');
-                    else if (y > 0.8) updateHUD('MOVE_DOWN');
-                    else if (x < 0.3) updateHUD('LEFT');
-                    else if (x > 0.7) updateHUD('RIGHT');
-                    else updateHUD('MOVE');
-                    return;
-                }
-
-                // 5. Dynamic Gestures (Swipe / Circular) - Requires history
-                if (gestureHistory.length > 10) {
-                    const first = gestureHistory[0];
-                    const last = gestureHistory[gestureHistory.length - 1];
-                    const dx = last.x - first.x;
-                    const dy = last.y - first.y;
-                    const time = last.timestamp - first.timestamp;
-
-                    // Swipe Up (mapped to MOVE) - Quick motion
-                    if (dy < -0.3 && time < 400) {
-                        updateHUD('MOVE');
-                        return;
-                    }
-
-                    // Circular Motion detection (Simplified)
-                    let isCircular = false;
-                    if (gestureHistory.length > 20) {
-                        const mid = gestureHistory[Math.floor(gestureHistory.length/2)];
-                        // If center of motion is significantly different from start/end
-                        const centX = (first.x + last.x) / 2;
-                        const dist = Math.abs(mid.x - centX);
-                        if (dist > 0.15 && Math.abs(dx) < 0.1) {
-                            updateHUD('RETURN_HOME');
-                            return;
-                        }
-                    }
+                if (stabilityCounter >= STABILITY_THRESHOLD) {
+                    dispatchCommand(detected);
                 }
 
             } else {
-                updateHUD('NONE');
+                currentGesture = 'NONE';
+                stabilityCounter = 0;
             }
         }
 
         async function initApp() {
             splash.style.display = 'none';
-            
-            hands = new Hands({
+
+            const hands = new Hands({
                 locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
             });
 
             hands.setOptions({
                 maxNumHands: 1,
                 modelComplexity: 1,
-                minDetectionConfidence: 0.6,
-                minTrackingConfidence: 0.6
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.7
             });
 
             hands.onResults(onResults);
@@ -468,26 +453,25 @@
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: 'environment', width: 640, height: 480 }
                 });
-                
-                videoElement.srcObject = stream;
-                videoL.srcObject = stream;
-                videoR.srcObject = stream;
 
-                camera = new Camera(videoElement, {
+                document.getElementById('input_video').srcObject = stream;
+                document.getElementById('video-L').srcObject = stream;
+                document.getElementById('video-R').srcObject = stream;
+
+                const camera = new Camera(document.getElementById('input_video'), {
                     onFrame: async () => {
-                        await hands.send({image: videoElement});
+                        await hands.send({image: document.getElementById('input_video')});
                     },
                     width: 640,
                     height: 480
                 });
                 camera.start();
 
-                // Go Fullscreen for VR
                 if (document.documentElement.requestFullscreen) {
                     document.documentElement.requestFullscreen();
                 }
             } catch (err) {
-                alert("Critical System Error: " + err.message);
+                alert("Camera initialization failed: " + err.message);
             }
         }
     </script>
