@@ -85,21 +85,7 @@
             z-index: 10;
         }
 
-        #fullscreen-btn {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 500;
-            background: rgba(0, 0, 0, 0.5);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 20px;
-            font-size: 14px;
-            border: 1px solid white;
-            cursor: pointer;
-            display: none;
-        }
+
     </style>
 </head>
 
@@ -123,14 +109,13 @@
         <div class="lens-mask"></div>
     </div>
 
-    <button id="fullscreen-btn">Toggle Fullscreen</button>
+
 
     <script>
         const startBtn = document.getElementById('start-btn');
         const ui = document.getElementById('ui');
         const videoLeft = document.getElementById('video-left');
         const videoRight = document.getElementById('video-right');
-        const fullscreenBtn = document.getElementById('fullscreen-btn');
 
         const playVideo = (stream) => {
             // Feed stream to BOTH eyes
@@ -138,7 +123,6 @@
             videoRight.srcObject = stream;
 
             ui.style.display = 'none';
-            fullscreenBtn.style.display = 'block';
 
             // Try to force fullscreen automatically for better VR immersion
             if (document.documentElement.requestFullscreen) {
@@ -177,18 +161,7 @@
             }
         });
 
-        // Allow user to manually toggle fullscreen if auto-fullscreen blocked
-        fullscreenBtn.addEventListener('click', () => {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(err => {
-                    console.log("Error attempting to enable full-screen mode:", err.message);
-                });
-            } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                }
-            }
-        });
+
     </script>
 </body>
 
